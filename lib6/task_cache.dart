@@ -10,9 +10,8 @@ class TasksCache {
 
   final Map<Filter, int?> _totalByGroup = {};
   
-  // Версионирование для отслеживания свежести
-  final Map<Filter, int> _groupVersion = {};
-  final Map<Filter, int> _currentVersion = {};
+  // Отслеживание устаревших данных
+  final Map<Filter, bool> _isGroupStale = {};
 
   /// Вернуть срез из индекса + сущностей
   Future<List<TaskModel>> fetch({
@@ -59,6 +58,21 @@ class TasksCache {
   Future<int?> getTotal(Filter g) async => _totalByGroup[g];
 
   Future<void> clearTotal(Filter g) async => _totalByGroup.remove(g);
+
+  /// Помечает группу как устаревшую (для refresh)
+  Future<void> markGroupStale(Filter groupKey) async {
+    _isGroupStale[groupKey] = true;
+  }
+
+  /// Помечает группу как свежую (после загрузки)
+  Future<void> markGroupFresh(Filter groupKey) async {
+    _isGroupStale[groupKey] = false;
+  }
+
+  /// Проверяет устарела ли группа
+  Future<bool> isGroupStale(Filter groupKey) async {
+    return _isGroupStale[groupKey] ?? false;
+  }
 
   Future<void> upsertTasks({
     required Filter groupKey,
