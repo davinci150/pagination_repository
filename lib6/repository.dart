@@ -30,11 +30,19 @@ class TaskRepository {
     required int offset,
     required int limit,
     bool force = false,
+    bool partialForce = false,
   }) async {
-    print('[TaskRepository] fetch $filter with force: $force');
+    print('[TaskRepository] fetch $filter with force: $force, partialForce: $partialForce');
 
     if (force) {
       await _cache.deleteGroup(filter);
+    } else if (partialForce) {
+      // Частичное обновление: очищаем только запрашиваемый диапазон
+      await _cache.clearRange(
+        groupKey: filter,
+        offset: offset,
+        limit: limit,
+      );
     }
 
     final fromCache = await _cache.fetch(
@@ -43,9 +51,10 @@ class TaskRepository {
       limit: limit,
     );
 
-    if (fromCache.length < limit) {
-      final missingFrom = offset + fromCache.length;
-      final fetchLimit = limit - fromCache.length;
+    // При partialForce принудительно загружаем запрашиваемый диапазон с API
+    if (partialForce || fromCache.length < limit) {
+      final missingFrom = partialForce ? offset : offset + fromCache.length;
+      final fetchLimit = partialForce ? limit : limit - fromCache.length;
       print('[TaskRepository] missingFrom: $missingFrom count: $fetchLimit');
       final tasks = await _api.getTasks(
         filter: filter,

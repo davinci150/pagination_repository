@@ -19,9 +19,6 @@ class TaskListBloc {
   final _progress$ = BehaviorSubject<bool>();
 
   final limit = 10;
-  
-  // Отслеживаем текущий лимит загруженных данных
-  int _currentLimit = 10;
 
   Stream<TaskListData> get tasks$ => _tasks$.stream;
   Stream<bool> get progress$ => _progress$.stream;
@@ -29,7 +26,6 @@ class TaskListBloc {
   StreamSubscription? _subscription;
 
   Future<void> init() async {
-    _currentLimit = limit;
     await getAndSubscribe(limit: limit);
   }
 
@@ -44,25 +40,29 @@ class TaskListBloc {
     final currentLength = _tasks$.value.tasks.length;
 
     if (_tasks$.value.total == null || _tasks$.value.total! > currentLength) {
-      _currentLimit = currentLength + limit;
-      getAndSubscribe(limit: _currentLimit);
+      getAndSubscribe(limit: currentLength + limit);
     }
   }
 
   Future<void> refresh() async {
-    _tasks$.add(TaskListData(tasks: [], total: null));
-    // Используем текущий лимит, чтобы загрузить столько же элементов что было до refresh
-    await getAndSubscribe(limit: _currentLimit, force: true);
+    // НЕ очищаем данные в UI, обновляем только первую страницу
+    await getAndSubscribe(limit: limit, partialForce: true);
   }
 
   Future<void> getAndSubscribe({
     required int limit,
     bool force = false,
+    bool partialForce = false,
   }) async {
     print('[TaskListBloc] getAndSubscribe $limit');
     _progress$.add(true);
-    final stream =
-        await _repo.fetch(filter, offset: 0, limit: limit, force: force);
+    final stream = await _repo.fetch(
+      filter, 
+      offset: 0, 
+      limit: limit, 
+      force: force,
+      partialForce: partialForce,
+    );
     _progress$.add(false);
     _subscription?.cancel();
     _subscription = stream.listen((listTasks) {

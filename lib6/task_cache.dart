@@ -75,6 +75,36 @@ class TasksCache {
     _indexByGroup.remove(groupKey);
   }
 
+  /// Очищает указанный диапазон в группе (для частичного refresh)
+  Future<void> clearRange({
+    required Filter groupKey, 
+    required int offset, 
+    required int limit
+  }) async {
+    final idx = _indexByGroup[groupKey];
+    if (idx == null) return;
+    
+    final next = Map<int, int>.from(idx);
+    // Удаляем элементы в диапазоне [offset, offset + limit)
+    for (var i = offset; i < offset + limit; i++) {
+      next.remove(i);
+    }
+    
+    // Сдвигаем элементы после диапазона
+    var shiftFrom = offset + limit;
+    var shiftTo = offset;
+    while (next.containsKey(shiftFrom)) {
+      next[shiftTo] = next[shiftFrom]!;
+      next.remove(shiftFrom);
+      shiftFrom++;
+      shiftTo++;
+    }
+    
+    _indexByGroup[groupKey] = next;
+    // Очищаем total так как структура изменилась
+    await clearTotal(groupKey);
+  }
+
   Future<void> deleteEntity(int id) async {
     for (final gk in _indexByGroup.keys) {
       final idx = _indexByGroup[gk];
