@@ -9,6 +9,10 @@ class TasksCache {
   final Map<Filter, Map<int, int>> _indexByGroup = {};
 
   final Map<Filter, int?> _totalByGroup = {};
+  
+  // Версионирование для отслеживания свежести
+  final Map<Filter, int> _groupVersion = {};
+  final Map<Filter, int> _currentVersion = {};
 
   /// Вернуть срез из индекса + сущностей
   Future<List<TaskModel>> fetch({
