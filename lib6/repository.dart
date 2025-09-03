@@ -25,24 +25,23 @@ class TaskRepository {
   /// Самый простой способ «заставить все страницы группы перечитать кэш»
   void _touch(Filter filter) => _touch$.add(filter);
 
+  /// Помечает все страницы как устаревшие (для refresh)
+  Future<void> invalidate(Filter filter) async {
+    await _cache.markAllPagesStale(filter);
+    _touch(filter); // уведомляем подписчиков
+  }
+
   Future<Stream<TaskListData>> fetch(
     Filter filter, {
     required int offset,
     required int limit,
     bool force = false,
-    bool partialForce = false,
+    int pageSize = 10,
   }) async {
-    print('[TaskRepository] fetch $filter with force: $force, partialForce: $partialForce');
+    print('[TaskRepository] fetch $filter offset: $offset, limit: $limit, force: $force');
 
     if (force) {
       await _cache.deleteGroup(filter);
-    } else if (partialForce) {
-      // Частичное обновление: очищаем только запрашиваемый диапазон
-      await _cache.clearRange(
-        groupKey: filter,
-        offset: offset,
-        limit: limit,
-      );
     }
 
     final fromCache = await _cache.fetch(
@@ -51,28 +50,68 @@ class TaskRepository {
       limit: limit,
     );
 
-    // При partialForce принудительно загружаем запрашиваемый диапазон с API
-    if (partialForce || fromCache.length < limit) {
-      final missingFrom = partialForce ? offset : offset + fromCache.length;
-      final fetchLimit = partialForce ? limit : limit - fromCache.length;
-      print('[TaskRepository] missingFrom: $missingFrom count: $fetchLimit');
+    if (force) {
+      // При force загружаем весь запрашиваемый диапазон
+      print('[TaskRepository] Force loading from API: $offset count: $limit');
       final tasks = await _api.getTasks(
         filter: filter,
-        offset: missingFrom,
-        limit: fetchLimit,
+        offset: offset,
+        limit: limit,
       );
+      
       await _cache.upsertTasks(
         groupKey: filter,
-        from: missingFrom,
+        from: offset,
         tasks: tasks,
+        pageSize: pageSize,
       );
 
       await _cache.updateTotalFromPageIfFrontier(
         filter: filter,
-        pageOffset: missingFrom,
-        requested: fetchLimit,
+        pageOffset: offset,
+        requested: limit,
         received: tasks.length,
       );
+    } else {
+      // Загружаем только недостающие/устаревшие страницы
+      for (var pageOffset = offset; pageOffset < offset + limit; pageOffset += pageSize) {
+        final cachedPage = await _cache.fetch(
+          groupKey: filter, 
+          offset: pageOffset, 
+          limit: pageSize
+        );
+        
+        final isStale = await _cache.isPageStale(filter, pageOffset, pageSize);
+        final needsData = cachedPage.length < pageSize;
+        
+        if (isStale || needsData) {
+          print('[TaskRepository] Loading page from API: $pageOffset (stale: $isStale, needs: $needsData)');
+          final tasks = await _api.getTasks(
+            filter: filter,
+            offset: pageOffset,
+            limit: pageSize,
+          );
+          
+          await _cache.upsertTasks(
+            groupKey: filter,
+            from: pageOffset,
+            tasks: tasks,
+            pageSize: pageSize,
+          );
+
+          await _cache.updateTotalFromPageIfFrontier(
+            filter: filter,
+            pageOffset: pageOffset,
+            requested: pageSize,
+            received: tasks.length,
+          );
+          
+          // Если получили меньше чем pageSize - это последняя страница
+          if (tasks.length < pageSize) {
+            break;
+          }
+        }
+      }
     }
 
     final initialSlice = await _cache.fetch(
