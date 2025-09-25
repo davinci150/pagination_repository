@@ -36,9 +36,7 @@ class TaskDetailsBloc {
 
   Future<void> setCompleted(bool isCompleted) async {
     _state$.add(state.copyWith(isLoading: true));
-    await _repo.update(
-      UpdateTaskCompleted(id: state.task?.id ?? 0, isCompleted: isCompleted),
-    );
+    await _repo.setCompleted(state.task?.id ?? 0, isCompleted);
     _state$.add(state.copyWith(isLoading: false));
   }
 

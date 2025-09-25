@@ -1,3 +1,4 @@
+import 'task_entity.dart';
 import 'task_model.dart';
 
 class TaskDetailsModel {
@@ -33,6 +34,15 @@ class TaskDetailsModel {
       id: taskModel.id,
       title: taskModel.title,
       isCompleted: taskModel.isCompleted,
+    );
+  }
+
+  TaskDetailsModel updateFromEntity(TaskEntity model) {
+    return copyWith(
+      id: model.id,
+      title: model.title,
+      isCompleted: model.isCompleted,
+      description: model.description,
     );
   }
 }

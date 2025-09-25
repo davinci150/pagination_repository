@@ -2,8 +2,8 @@ import 'dart:async';
 
 import 'package:rxdart/rxdart.dart';
 
-import 'task_details_model.dart';
-import 'task_repository.dart';
+import '../model/task_details_model.dart';
+import '../task_repository.dart';
 
 class TaskDetailsBloc {
   TaskDetailsBloc({required this.id}) {
@@ -36,9 +36,7 @@ class TaskDetailsBloc {
 
   Future<void> setCompleted(bool isCompleted) async {
     _state$.add(state.copyWith(isLoading: true));
-    await _repo.update(
-      UpdateTaskCompleted(id: state.task?.id ?? 0, isCompleted: isCompleted),
-    );
+    await _repo.setCompleted(state.task?.id ?? 0, isCompleted);
     _state$.add(state.copyWith(isLoading: false));
   }
 

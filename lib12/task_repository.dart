@@ -9,11 +9,10 @@ import 'task_cache.dart';
 import 'task_details_model.dart';
 import 'task_model.dart';
 
-class TaskRepository {
+class TaskRepository implements TaskRepositoryI {
   TaskRepository._() {
     invalidateCache$.asyncMap((_) async {
       await _cache.clear();
-      _touch(true);
     }).listen((_) {});
   }
 
@@ -25,14 +24,9 @@ class TaskRepository {
 
   final _cache = TasksCache();
 
-  final _touch$ = PublishSubject<bool>();
-
-  Stream<bool> get onChanged$ => _touch$.stream;
-
-  void _touch(bool force) => _touch$.add(force);
-
   final Map<int, BehaviorSubject<TaskDetailsModel>> _taskDetailsStreams = {};
 
+  @override
   Future<Stream<TaskDetailsModel>> getTaskDetailsStream(int taskId) async {
     if (!_taskDetailsStreams.containsKey(taskId)) {
       final task = await _api.getTask(taskId);
@@ -50,22 +44,14 @@ class TaskRepository {
     return _taskDetailsStreams[taskId]!.stream;
   }
 
-  Future<List<TaskModel>> fetch(
+  @override
+  Future<List<TaskModel>> fetchTasks(
     Filter filter, {
     required int offset,
     required int limit,
     bool force = false,
-    bool onlyCache = false,
   }) async {
     print('[TaskRepository] fetch $filter with force: $force');
-
-    if (onlyCache) {
-      return _cache.fetch(
-        groupKey: filter,
-        offset: offset,
-        limit: limit,
-      );
-    }
 
     if (force) {
       final fromApi = await _api.getTasks(
@@ -117,51 +103,57 @@ class TaskRepository {
     return fromCache;
   }
 
-  Future<void> update(UpdateTask updateTask) async {
-    switch (updateTask) {
-      case UpdateTaskCompleted():
-        await _api.setCompleted(
-          id: updateTask.id,
-          isCompleted: updateTask.isCompleted,
-        );
+  @override
+  Stream<List<TaskModel>> getTasksStream(Filter filter, int offset, int limit) {
+    return _cache.getTasksStream(
+      filter,
+      offset: offset,
+      limit: limit,
+    );
+  }
 
-        final model = await _cache.getById(updateTask.id);
-        if (model != null) {
-          await _cache.update(
-            model.copyWith(isCompleted: updateTask.isCompleted),
-          );
-        }
+  @override
+  Future<void> setCompleted(int id, bool isCompleted) async {
+    await _api.setCompleted(id: id, isCompleted: isCompleted);
 
-        if (_taskDetailsStreams.containsKey(updateTask.id)) {
-          final model = _taskDetailsStreams[updateTask.id]!.value;
-          _taskDetailsStreams[updateTask.id]!.add(
-            model.copyWith(
-              isCompleted: updateTask.isCompleted,
-            ),
-          );
-        }
+    await _cache.applyPatch(TaskPatch(id: id, isCompleted: isCompleted));
 
-        _touch(true);
+    if (_taskDetailsStreams.containsKey(id)) {
+      final model = _taskDetailsStreams[id]!.value;
+      _taskDetailsStreams[id]!.add(
+        model.copyWith(isCompleted: isCompleted),
+      );
     }
   }
 
+  @override
   Future<void> delete(TaskModel model) async {
     await _api.delete(model);
 
     await _cache.delete(model.id);
+  }
 
-    _touch(true);
+  @override
+  Future<TaskDetailsModel> getTaskDetails(int taskId) {
+    return _api.getTask(taskId);
   }
 }
 
-abstract class UpdateTask {}
-
-class UpdateTaskCompleted extends UpdateTask {
-  final int id;
-  final bool isCompleted;
-
-  UpdateTaskCompleted({
-    required this.id,
-    required this.isCompleted,
+abstract class TaskRepositoryI {
+  Future<List<TaskModel>> fetchTasks(
+    Filter filter, {
+    required int offset,
+    required int limit,
+    bool force = false,
   });
+
+  Stream<List<TaskModel>> getTasksStream(Filter filter, int offset, int limit);
+
+  Future<Stream<TaskDetailsModel>> getTaskDetailsStream(int taskId);
+
+  Future<TaskDetailsModel> getTaskDetails(int taskId);
+
+  Future<void> setCompleted(int id, bool isCompleted);
+
+  Future<void> delete(TaskModel model);
 }

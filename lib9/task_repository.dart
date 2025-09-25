@@ -117,32 +117,22 @@ class TaskRepository {
     return fromCache;
   }
 
-  Future<void> update(UpdateTask updateTask) async {
-    switch (updateTask) {
-      case UpdateTaskCompleted():
-        await _api.setCompleted(
-          id: updateTask.id,
-          isCompleted: updateTask.isCompleted,
-        );
+  Future<void> setCompleted(int id, bool isCompleted) async {
+    await _api.setCompleted(id: id, isCompleted: isCompleted);
 
-        final model = await _cache.getById(updateTask.id);
-        if (model != null) {
-          await _cache.update(
-            model.copyWith(isCompleted: updateTask.isCompleted),
-          );
-        }
-
-        if (_taskDetailsStreams.containsKey(updateTask.id)) {
-          final model = _taskDetailsStreams[updateTask.id]!.value;
-          _taskDetailsStreams[updateTask.id]!.add(
-            model.copyWith(
-              isCompleted: updateTask.isCompleted,
-            ),
-          );
-        }
-
-        _touch(true);
+    final model = await _cache.getById(id);
+    if (model != null) {
+      await _cache.update(model.copyWith(isCompleted: isCompleted));
     }
+
+    if (_taskDetailsStreams.containsKey(id)) {
+      final model = _taskDetailsStreams[id]!.value;
+      _taskDetailsStreams[id]!.add(
+        model.copyWith(isCompleted: isCompleted),
+      );
+    }
+
+    _touch(true);
   }
 
   Future<void> delete(TaskModel model) async {
@@ -154,14 +144,20 @@ class TaskRepository {
   }
 }
 
-abstract class UpdateTask {}
+abstract class TaskRepositoryI {
+  Future<void> delete(TaskModel model);
 
-class UpdateTaskCompleted extends UpdateTask {
-  final int id;
-  final bool isCompleted;
+  Future<void> setCompleted(int id, bool isCompleted);
 
-  UpdateTaskCompleted({
-    required this.id,
-    required this.isCompleted,
+  Future<List<TaskModel>> fetch(
+    Filter filter, {
+    required int offset,
+    required int limit,
+    bool force = false,
+    bool onlyCache = false,
   });
+
+  Future<Stream<TaskDetailsModel>> getTaskDetailsStream(int taskId);
+
+  Stream<bool> get onChanged$;
 }

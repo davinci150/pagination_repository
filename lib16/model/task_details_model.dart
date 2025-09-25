@@ -1,3 +1,5 @@
+import '../task_cache.dart';
+import 'task_entity.dart';
 import 'task_model.dart';
 
 class TaskDetailsModel {
@@ -26,13 +28,10 @@ class TaskDetailsModel {
       description: description ?? this.description,
     );
   }
+}
 
-  /// Обновляет TaskDetailsModel данными из TaskModel (сохраняя description)
-  TaskDetailsModel updateFromTaskModel(TaskModel taskModel) {
-    return copyWith(
-      id: taskModel.id,
-      title: taskModel.title,
-      isCompleted: taskModel.isCompleted,
-    );
+extension TaskDetailsX on TaskDetailsModel {
+  TaskDetailsModel updateFromPatch(TaskPatch patch) {
+    return copyWith(isCompleted: patch.isCompleted);
   }
 }
