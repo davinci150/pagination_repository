@@ -45,8 +45,17 @@ class TaskListBloc {
   }
 
   Future<void> refresh() async {
-    _tasks$.add(TaskListData(tasks: [], total: null));
-    await getAndSubscribe(limit: limit, force: true);
+    print('[TaskListBloc] refresh - invalidating all pages');
+    _progress$.add(true);
+    
+    // 1. Помечаем все страницы как устаревшие
+    await _repo.invalidate(filter);
+    
+    // 2. Перезапрашиваем уже загруженные данные (stale страницы загрузятся с API)
+    final currentLength = _tasks$.hasValue ? _tasks$.value.tasks.length : limit;
+    await getAndSubscribe(limit: currentLength);
+    
+    _progress$.add(false);
   }
 
   Future<void> getAndSubscribe({
@@ -55,8 +64,13 @@ class TaskListBloc {
   }) async {
     print('[TaskListBloc] getAndSubscribe $limit');
     _progress$.add(true);
-    final stream =
-        await _repo.fetch(filter, offset: 0, limit: limit, force: force);
+    final stream = await _repo.fetch(
+      filter, 
+      offset: 0, 
+      limit: limit, 
+      force: force,
+      pageSize: this.limit, // передаём pageSize для staleness tracking
+    );
     _progress$.add(false);
     _subscription?.cancel();
     _subscription = stream.listen((listTasks) {

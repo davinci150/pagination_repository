@@ -9,6 +9,9 @@ class TasksCache {
   final Map<Filter, Map<int, int>> _indexByGroup = {};
 
   final Map<Filter, int?> _totalByGroup = {};
+  
+  // Отслеживание устаревших страниц (filter + pageIndex → isStale)
+  final Map<String, bool> _pageStale = {};
 
   /// Вернуть срез из индекса + сущностей
   Future<List<TaskModel>> fetch({
@@ -56,10 +59,45 @@ class TasksCache {
 
   Future<void> clearTotal(Filter g) async => _totalByGroup.remove(g);
 
+  /// Получить ключ страницы для staleness tracking
+  String _pageKey(Filter filter, int pageIndex) {
+    return '${filter.hashCode}_$pageIndex';
+  }
+
+  /// Получить pageIndex по offset и pageSize
+  int _getPageIndex(int offset, int pageSize) {
+    return offset ~/ pageSize;
+  }
+
+  /// Помечает все страницы группы как устаревшие (для refresh)
+  Future<void> markAllPagesStale(Filter filter) async {
+    final idx = _indexByGroup[filter] ?? const <int, int>{};
+    final maxIndex = idx.keys.isEmpty ? 0 : idx.keys.reduce((a, b) => a > b ? a : b);
+    final maxPageSize = 50; // разумное предположение о максимальном pageSize
+    
+    // Помечаем все возможные страницы как stale
+    for (var pageIndex = 0; pageIndex <= (maxIndex ~/ 10) + 1; pageIndex++) {
+      _pageStale[_pageKey(filter, pageIndex)] = true;
+    }
+  }
+
+  /// Помечает страницу как свежую (после загрузки)
+  Future<void> markPageFresh(Filter filter, int offset, int pageSize) async {
+    final pageIndex = _getPageIndex(offset, pageSize);
+    _pageStale[_pageKey(filter, pageIndex)] = false;
+  }
+
+  /// Проверяет устарела ли страница
+  Future<bool> isPageStale(Filter filter, int offset, int pageSize) async {
+    final pageIndex = _getPageIndex(offset, pageSize);
+    return _pageStale[_pageKey(filter, pageIndex)] ?? false;
+  }
+
   Future<void> upsertTasks({
     required Filter groupKey,
     required int from,
     required List<TaskModel> tasks,
+    int pageSize = 10,
   }) async {
     final idx =
         Map<int, int>.from(_indexByGroup[groupKey] ?? const <int, int>{});
@@ -69,6 +107,9 @@ class TasksCache {
       _entities[t.id] = t;
     }
     _indexByGroup[groupKey] = idx;
+    
+    // Помечаем загруженную страницу как свежую
+    await markPageFresh(groupKey, from, pageSize);
   }
 
   Future<void> deleteGroup(Filter groupKey) async {
